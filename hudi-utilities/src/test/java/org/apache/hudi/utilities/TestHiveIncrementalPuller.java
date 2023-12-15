@@ -19,7 +19,6 @@
 package org.apache.hudi.utilities;
 
 import org.apache.hudi.common.config.TypedProperties;
-import org.apache.hudi.common.util.Option;
 import org.apache.hudi.hive.HiveSyncConfig;
 import org.apache.hudi.hive.HiveSyncTool;
 import org.apache.hudi.hive.HoodieHiveSyncClient;
@@ -65,7 +64,7 @@ public class TestHiveIncrementalPuller {
 
   @BeforeEach
   public void setUp() throws Exception {
-    HiveTestUtil.setUp(Option.empty(), true);
+    HiveTestUtil.setUp();
   }
 
   @AfterEach

@@ -219,13 +219,9 @@ public class HoodieTestTable {
   }
 
   public HoodieTestTable addCommit(String instantTime, Option<HoodieCommitMetadata> metadata) throws Exception {
-    return addCommit(instantTime, Option.empty(), metadata);
-  }
-
-  public HoodieTestTable addCommit(String instantTime, Option<String> completionTime, Option<HoodieCommitMetadata> metadata) throws Exception {
     createRequestedCommit(basePath, instantTime);
     createInflightCommit(basePath, instantTime);
-    createCommit(basePath, instantTime, completionTime, metadata);
+    createCommit(basePath, instantTime, metadata);
     currentInstantTime = instantTime;
     return this;
   }

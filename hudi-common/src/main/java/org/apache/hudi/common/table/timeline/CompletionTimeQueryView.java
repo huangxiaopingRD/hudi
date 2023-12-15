@@ -19,7 +19,6 @@
 package org.apache.hudi.common.table.timeline;
 
 import org.apache.hudi.common.table.HoodieTableMetaClient;
-import org.apache.hudi.common.table.log.InstantRange;
 import org.apache.hudi.common.util.Option;
 
 import org.apache.avro.generic.GenericRecord;
@@ -28,13 +27,9 @@ import java.io.Serializable;
 import java.time.Instant;
 import java.util.Date;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 import static org.apache.hudi.common.table.timeline.HoodieArchivedTimeline.COMPLETION_TIME_ARCHIVED_META_FIELD;
-import static org.apache.hudi.common.table.timeline.HoodieTimeline.GREATER_THAN;
 import static org.apache.hudi.common.table.timeline.HoodieTimeline.GREATER_THAN_OR_EQUALS;
 import static org.apache.hudi.common.table.timeline.HoodieTimeline.LESSER_THAN;
 
@@ -45,8 +40,6 @@ public class CompletionTimeQueryView implements AutoCloseable, Serializable {
   private static final long serialVersionUID = 1L;
 
   private static final long MILLI_SECONDS_IN_THREE_DAYS = 3 * 24 * 3600 * 1000;
-
-  private static final long MILLI_SECONDS_IN_ONE_DAY = 24 * 3600 * 1000;
 
   private final HoodieTableMetaClient metaClient;
 
@@ -166,65 +159,20 @@ public class CompletionTimeQueryView implements AutoCloseable, Serializable {
       // the instant is still pending
       return Option.empty();
     }
-    loadCompletionTimeIncrementally(startTime);
-    return Option.ofNullable(this.startToCompletionInstantTimeMap.get(startTime));
-  }
-
-  /**
-   * Queries the instant start time with given completion time range.
-   *
-   * <p>By default, assumes there is at most 1 day time of duration for an instant to accelerate the queries.
-   *
-   * @param startCompletionTime The start completion time.
-   * @param endCompletionTime   The end completion time.
-   *
-   * @return The instant time set.
-   */
-  public Set<String> getStartTimeSet(String startCompletionTime, String endCompletionTime) {
-    // assumes any instant/transaction lasts at most 1 day to optimize the query efficiency.
-    return getStartTimeSet(startCompletionTime, endCompletionTime, s -> HoodieInstantTimeGenerator.instantTimeMinusMillis(s, MILLI_SECONDS_IN_ONE_DAY));
-  }
-
-  /**
-   * Queries the instant start time with given completion time range.
-   *
-   * @param startCompletionTime   The start completion time.
-   * @param endCompletionTime     The end completion time.
-   * @param earliestStartTimeFunc The function to generate the earliest start time boundary
-   *                              with the minimum completion time {@code startCompletionTime}.
-   *
-   * @return The instant time set.
-   */
-  public Set<String> getStartTimeSet(String startCompletionTime, String endCompletionTime, Function<String, String> earliestStartTimeFunc) {
-    String startInstant = earliestStartTimeFunc.apply(startCompletionTime);
-    final InstantRange instantRange = InstantRange.builder()
-        .rangeType(InstantRange.RangeType.CLOSE_CLOSE)
-        .startInstant(startCompletionTime)
-        .endInstant(endCompletionTime)
-        .nullableBoundary(true)
-        .build();
-    if (HoodieTimeline.compareTimestamps(this.cursorInstant, GREATER_THAN, startInstant)) {
-      loadCompletionTimeIncrementally(startInstant);
-    }
-    return this.startToCompletionInstantTimeMap.entrySet().stream()
-        .filter(entry -> instantRange.isInRange(entry.getValue()))
-        .map(Map.Entry::getKey).collect(Collectors.toSet());
-  }
-
-  private void loadCompletionTimeIncrementally(String startTime) {
     // the 'startTime' should be out of the eager loading range, switch to a lazy loading.
     // This operation is resource costly.
     synchronized (this) {
       if (HoodieTimeline.compareTimestamps(startTime, LESSER_THAN, this.cursorInstant)) {
         HoodieArchivedTimeline.loadInstants(metaClient,
             new HoodieArchivedTimeline.ClosedOpenTimeRangeFilter(startTime, this.cursorInstant),
-            HoodieArchivedTimeline.LoadMode.TIME,
+            HoodieArchivedTimeline.LoadMode.SLIM,
             r -> true,
             this::readCompletionTime);
       }
       // refresh the start instant
       this.cursorInstant = startTime;
     }
+    return Option.ofNullable(this.startToCompletionInstantTimeMap.get(startTime));
   }
 
   /**
@@ -240,7 +188,7 @@ public class CompletionTimeQueryView implements AutoCloseable, Serializable {
     // then load the archived instants.
     HoodieArchivedTimeline.loadInstants(metaClient,
         new HoodieArchivedTimeline.StartTsFilter(this.cursorInstant),
-        HoodieArchivedTimeline.LoadMode.TIME,
+        HoodieArchivedTimeline.LoadMode.SLIM,
         r -> true,
         this::readCompletionTime);
   }

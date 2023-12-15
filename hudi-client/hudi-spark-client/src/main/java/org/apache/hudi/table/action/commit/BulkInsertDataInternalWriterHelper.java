@@ -18,7 +18,6 @@
 
 package org.apache.hudi.table.action.commit;
 
-import org.apache.hudi.HoodieDatasetBulkInsertHelper;
 import org.apache.hudi.client.WriteStatus;
 import org.apache.hudi.common.model.HoodieRecord;
 import org.apache.hudi.common.util.Option;
@@ -39,15 +38,10 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.UUID;
-
-import scala.collection.JavaConversions;
-import scala.collection.JavaConverters;
 
 /**
  * Helper class for HoodieBulkInsertDataInternalWriter used by Spark datasource v2.
@@ -130,33 +124,7 @@ public class BulkInsertDataInternalWriterHelper {
         lastKnownPartitionPath = partitionPath.clone();
       }
 
-      boolean shouldDropPartitionColumns = writeConfig.shouldDropPartitionColumns();
-      if (shouldDropPartitionColumns) {
-        // Drop the partition columns from the row
-        // Using the deprecated JavaConversions to be compatible with scala versions < 2.12. Once hudi support for scala versions < 2.12 is
-        // stopped, can move this to JavaConverters.seqAsJavaList(...)
-        List<String> partitionCols = JavaConversions.<String>seqAsJavaList(HoodieDatasetBulkInsertHelper.getPartitionPathCols(this.writeConfig));
-        Set<Integer> partitionIdx = new HashSet<Integer>();
-        for (String col : partitionCols) {
-          partitionIdx.add(this.structType.fieldIndex(col));
-        }
-
-        // Relies on InternalRow::toSeq(...) preserving the column ordering based on the supplied schema
-        // Using the deprecated JavaConversions to be compatible with scala versions < 2.12.
-        List<Object> cols = JavaConversions.<Object>seqAsJavaList(row.toSeq(structType));
-        int idx = 0;
-        List<Object> newCols = new ArrayList<Object>();
-        for (Object o : cols) {
-          if (!partitionIdx.contains(idx)) {
-            newCols.add(o);
-          }
-          idx += 1;
-        }
-        InternalRow newRow = InternalRow.fromSeq(JavaConverters.<Object>asScalaIteratorConverter(newCols.iterator()).asScala().toSeq());
-        handle.write(newRow);
-      } else {
-        handle.write(row);
-      }
+      handle.write(row);
     } catch (Throwable t) {
       LOG.error("Global error thrown while trying to write records in HoodieRowCreateHandle ", t);
       throw t;

@@ -20,11 +20,9 @@ package org.apache.hudi.callback.common;
 import org.apache.hudi.ApiMaturityLevel;
 import org.apache.hudi.PublicAPIClass;
 import org.apache.hudi.common.model.HoodieWriteStat;
-import org.apache.hudi.common.util.Option;
 
 import java.io.Serializable;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Base callback message, which contains commitTime and tableName only for now.
@@ -54,35 +52,11 @@ public class HoodieWriteCommitCallbackMessage implements Serializable {
    */
   private final List<HoodieWriteStat> hoodieWriteStat;
 
-  /**
-   * Action Type of the commit.
-   */
-  private final Option<String> commitActionType;
-
-  /**
-   * Extra metadata in the commit.
-   */
-  private final Option<Map<String, String>> extraMetadata;
-
-  public HoodieWriteCommitCallbackMessage(String commitTime,
-                                          String tableName,
-                                          String basePath,
-                                          List<HoodieWriteStat> hoodieWriteStat) {
-    this(commitTime, tableName, basePath, hoodieWriteStat, Option.empty(), Option.empty());
-  }
-
-  public HoodieWriteCommitCallbackMessage(String commitTime,
-                                          String tableName,
-                                          String basePath,
-                                          List<HoodieWriteStat> hoodieWriteStat,
-                                          Option<String> commitActionType,
-                                          Option<Map<String, String>> extraMetadata) {
+  public HoodieWriteCommitCallbackMessage(String commitTime, String tableName, String basePath, List<HoodieWriteStat> hoodieWriteStat) {
     this.commitTime = commitTime;
     this.tableName = tableName;
     this.basePath = basePath;
     this.hoodieWriteStat = hoodieWriteStat;
-    this.commitActionType = commitActionType;
-    this.extraMetadata = extraMetadata;
   }
 
   public String getCommitTime() {
@@ -99,13 +73,5 @@ public class HoodieWriteCommitCallbackMessage implements Serializable {
 
   public List<HoodieWriteStat> getHoodieWriteStat() {
     return hoodieWriteStat;
-  }
-
-  public Option<String> getCommitActionType() {
-    return commitActionType;
-  }
-
-  public Option<Map<String, String>> getExtraMetadata() {
-    return extraMetadata;
   }
 }

@@ -38,7 +38,6 @@ import org.apache.hudi.utils.TestData;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.table.api.DataTypes;
-import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.expressions.FieldReferenceExpression;
 import org.apache.flink.table.expressions.ValueLiteralExpression;
 import org.apache.hadoop.fs.FileStatus;
@@ -183,10 +182,7 @@ public class TestIncrementalInputSplits extends HoodieCommonTestHarness {
       List<String> expectedPartitions) throws Exception {
     Configuration conf = TestConfigurations.getDefaultConf(basePath);
     conf.set(FlinkOptions.READ_AS_STREAMING, true);
-    List<RowData> testData = new ArrayList<>();
-    testData.addAll(TestData.DATA_SET_INSERT.stream().collect(Collectors.toList()));
-    testData.addAll(TestData.DATA_SET_INSERT_PARTITION_IS_NULL.stream().collect(Collectors.toList()));
-    TestData.writeData(testData, conf);
+    TestData.writeData(TestData.DATA_SET_INSERT, conf);
     PartitionPruners.PartitionPruner partitionPruner = PartitionPruners.getInstance(
         Collections.singletonList(partitionEvaluator),
         Collections.singletonList("partition"),
@@ -304,22 +300,11 @@ public class TestIncrementalInputSplits extends HoodieCommonTestHarness {
     ExpressionEvaluators.In in = ExpressionEvaluators.In.getInstance();
     in.bindFieldReference(partitionFieldRef);
     in.bindVals("par1", "par4");
-
-    // `partition` is not null
-    ExpressionEvaluators.IsNotNull isNotNull = ExpressionEvaluators.IsNotNull.getInstance();
-    isNotNull.bindFieldReference(partitionFieldRef);
-
-    // `partition` is null
-    ExpressionEvaluators.IsNull isNull = ExpressionEvaluators.IsNull.getInstance();
-    isNull.bindFieldReference(partitionFieldRef);
-
     Object[][] data = new Object[][] {
         {notEqualTo, Arrays.asList("par1", "par2", "par4")},
         {greaterThan, Arrays.asList("par2", "par3", "par4")},
         {and, Arrays.asList("par2", "par4")},
-        {in, Arrays.asList("par1", "par4")},
-        {isNotNull, Arrays.asList("par1", "par2", "par3", "par4")},
-        {isNull, Arrays.asList(PartitionPathEncodeUtils.DEFAULT_PARTITION_PATH)}};
+        {in, Arrays.asList("par1", "par4")}};
     return Stream.of(data).map(Arguments::of);
   }
 

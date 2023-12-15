@@ -63,7 +63,6 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import static org.apache.hudi.common.table.timeline.TimelineMetadataUtils.serializeCleanMetadata;
@@ -139,10 +138,6 @@ public class FileCreateUtils {
   }
 
   private static void createMetaFile(String basePath, String instantTime, String suffix, byte[] content) throws IOException {
-    createMetaFile(basePath, instantTime, InProcessTimeGenerator::createNewInstantTime, suffix, content);
-  }
-
-  private static void createMetaFile(String basePath, String instantTime, Supplier<String> completionTimeSupplier, String suffix, byte[] content) throws IOException {
     Path parentPath = Paths.get(basePath, HoodieTableMetaClient.METAFOLDER_NAME);
     Files.createDirectories(parentPath);
     if (suffix.contains(HoodieTimeline.INFLIGHT_EXTENSION) || suffix.contains(HoodieTimeline.REQUESTED_EXTENSION)) {
@@ -159,7 +154,7 @@ public class FileCreateUtils {
         // The instant file is not exist
         if (!dirStream.iterator().hasNext()) {
           // doesn't contains completion time
-          String instantTimeAndCompletionTime = instantTime + "_" + completionTimeSupplier.get();
+          String instantTimeAndCompletionTime = instantTime + "_" + InProcessTimeGenerator.createNewInstantTime();
           Path metaFilePath = parentPath.resolve(instantTimeAndCompletionTime + suffix);
           if (content.length == 0) {
             Files.createFile(metaFilePath);
@@ -193,18 +188,12 @@ public class FileCreateUtils {
   }
 
   public static void createCommit(String basePath, String instantTime, Option<HoodieCommitMetadata> metadata) throws IOException {
-    createCommit(basePath, instantTime, Option.empty(), metadata);
-  }
-
-  public static void createCommit(String basePath, String instantTime, Option<String> completionTime, Option<HoodieCommitMetadata> metadata) throws IOException {
-    final Supplier<String> completionTimeSupplier = () -> completionTime.isPresent() ? completionTime.get() : InProcessTimeGenerator.createNewInstantTime();
     if (metadata.isPresent()) {
       HoodieCommitMetadata commitMetadata = metadata.get();
-      createMetaFile(basePath, instantTime, completionTimeSupplier, HoodieTimeline.COMMIT_EXTENSION,
+      createMetaFile(basePath, instantTime, HoodieTimeline.COMMIT_EXTENSION,
           serializeCommitMetadata(commitMetadata).get());
     } else {
-      createMetaFile(basePath, instantTime, completionTimeSupplier, HoodieTimeline.COMMIT_EXTENSION,
-          getUTF8Bytes(""));
+      createMetaFile(basePath, instantTime, HoodieTimeline.COMMIT_EXTENSION);
     }
   }
 

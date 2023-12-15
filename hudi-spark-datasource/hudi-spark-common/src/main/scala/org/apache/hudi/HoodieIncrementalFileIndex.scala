@@ -29,7 +29,7 @@ import org.apache.spark.sql.sources.Filter
 import org.apache.spark.sql.types.StructType
 
 import java.util.stream.Collectors
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters.asScalaBufferConverter
 
 class HoodieIncrementalFileIndex(override val spark: SparkSession,
                                  override val metaClient: HoodieTableMetaClient,

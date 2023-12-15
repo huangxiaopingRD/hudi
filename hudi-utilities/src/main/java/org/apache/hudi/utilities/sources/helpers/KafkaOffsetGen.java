@@ -156,13 +156,7 @@ public class KafkaOffsetGen {
             continue;
           }
 
-          long toOffset = -1L;
-          if (range.fromOffset() + eventsPerPartition > range.fromOffset()) {
-            toOffset = Math.min(range.untilOffset(), range.fromOffset() + eventsPerPartition);
-          } else {
-            // handling Long overflow
-            toOffset = range.untilOffset();
-          }
+          long toOffset = Math.min(range.untilOffset(), range.fromOffset() + eventsPerPartition);
           if (toOffset == range.untilOffset()) {
             exhaustedPartitions.add(range.partition());
           }

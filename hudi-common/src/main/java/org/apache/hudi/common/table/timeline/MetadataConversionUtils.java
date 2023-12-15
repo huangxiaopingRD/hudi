@@ -154,7 +154,7 @@ public class MetadataConversionUtils {
     lsmTimelineInstant.setVersion(LSMTimeline.LSM_TIMELINE_INSTANT_VERSION_1);
     switch (activeAction.getPendingAction()) {
       case HoodieTimeline.CLEAN_ACTION: {
-        activeAction.getCleanPlan(metaClient).ifPresent(plan -> lsmTimelineInstant.setPlan(ByteBuffer.wrap(plan)));
+        lsmTimelineInstant.setPlan(ByteBuffer.wrap(activeAction.getCleanPlan(metaClient)));
         break;
       }
       case HoodieTimeline.REPLACE_COMMIT_ACTION: {
@@ -168,11 +168,11 @@ public class MetadataConversionUtils {
         break;
       }
       case HoodieTimeline.COMPACTION_ACTION: {
-        activeAction.getCompactionPlan(metaClient).ifPresent(plan -> lsmTimelineInstant.setPlan(ByteBuffer.wrap(plan)));
+        lsmTimelineInstant.setPlan(ByteBuffer.wrap(activeAction.getCompactionPlan(metaClient)));
         break;
       }
       case HoodieTimeline.LOG_COMPACTION_ACTION: {
-        activeAction.getLogCompactionPlan(metaClient).ifPresent(plan -> lsmTimelineInstant.setPlan(ByteBuffer.wrap(plan)));
+        lsmTimelineInstant.setPlan(ByteBuffer.wrap(activeAction.getLogCompactionPlan(metaClient)));
         break;
       }
       default:

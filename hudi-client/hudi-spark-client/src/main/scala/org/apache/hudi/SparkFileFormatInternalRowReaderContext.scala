@@ -25,18 +25,16 @@ import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import org.apache.hudi.common.engine.HoodieReaderContext
 import org.apache.hudi.common.fs.FSUtils
-import org.apache.hudi.common.util.ValidationUtils.checkState
 import org.apache.hudi.common.util.collection.{ClosableIterator, CloseableMappingIterator}
 import org.apache.hudi.io.storage.{HoodieSparkFileReaderFactory, HoodieSparkParquetReader}
 import org.apache.hudi.util.CloseableInternalRowIterator
+import org.apache.spark.sql.HoodieInternalRowUtils
 import org.apache.spark.sql.avro.HoodieAvroDeserializer
 import org.apache.spark.sql.catalyst.InternalRow
-import org.apache.spark.sql.catalyst.expressions.{JoinedRow, UnsafeProjection, UnsafeRow}
+import org.apache.spark.sql.catalyst.expressions.{UnsafeProjection, UnsafeRow}
 import org.apache.spark.sql.execution.datasources.PartitionedFile
 import org.apache.spark.sql.execution.datasources.parquet.ParquetFileFormat
 import org.apache.spark.sql.types.StructType
-import org.apache.spark.sql.vectorized.{ColumnVector, ColumnarBatch}
-import org.apache.spark.sql.HoodieInternalRowUtils
 
 import scala.collection.mutable
 
@@ -46,11 +44,13 @@ import scala.collection.mutable
  *
  * This uses Spark parquet reader to read parquet data files or parquet log blocks.
  *
- * @param readermaps our intention is to build the reader inside of getFileRecordIterator, but since it is called from
- *                   the executor, we will need to port a bunch of the code from ParquetFileFormat for each spark version
- *                   for now, we pass in a map of the different readers we expect to create
+ * @param baseFileReader  A reader that transforms a {@link PartitionedFile} to an iterator of
+ *                        {@link InternalRow}. This is required for reading the base file and
+ *                        not required for reading a file group with only log files.
+ * @param partitionValues The values for a partition in which the file group lives.
  */
-class SparkFileFormatInternalRowReaderContext(readerMaps: mutable.Map[Long, PartitionedFile => Iterator[InternalRow]]) extends BaseSparkInternalRowReaderContext {
+class SparkFileFormatInternalRowReaderContext(baseFileReader: Option[PartitionedFile => Iterator[InternalRow]],
+                                              partitionValues: InternalRow) extends BaseSparkInternalRowReaderContext {
   lazy val sparkAdapter = SparkAdapterSupport.sparkAdapter
   lazy val sparkFileReaderFactory = new HoodieSparkFileReaderFactory
   val deserializerMap: mutable.Map[Schema, HoodieAvroDeserializer] = mutable.Map()
@@ -61,10 +61,8 @@ class SparkFileFormatInternalRowReaderContext(readerMaps: mutable.Map[Long, Part
                                      dataSchema: Schema,
                                      requiredSchema: Schema,
                                      conf: Configuration): ClosableIterator[InternalRow] = {
-    // partition value is empty because the spark parquet reader will append the partition columns to
-    // each row if they are given. That is the only usage of the partition values in the reader.
     val fileInfo = sparkAdapter.getSparkPartitionedFileUtils
-      .createPartitionedFile(InternalRow.empty, filePath, start, length)
+      .createPartitionedFile(partitionValues, filePath, start, length)
     if (FSUtils.isLogFile(filePath)) {
       val structType: StructType = HoodieInternalRowUtils.getCachedSchema(requiredSchema)
       val projection: UnsafeProjection = HoodieInternalRowUtils.getCachedUnsafeProjection(structType, structType)
@@ -79,16 +77,12 @@ class SparkFileFormatInternalRowReaderContext(readerMaps: mutable.Map[Long, Part
           }
         }).asInstanceOf[ClosableIterator[InternalRow]]
     } else {
-      val schemaPairHashKey = generateSchemaPairHashKey(dataSchema, requiredSchema)
-      if (!readerMaps.contains(schemaPairHashKey)) {
-        throw new IllegalStateException("schemas don't hash to a known reader")
+      if (baseFileReader.isEmpty) {
+        throw new IllegalArgumentException("Base file reader is missing when instantiating "
+          + "SparkFileFormatInternalRowReaderContext.");
       }
-      new CloseableInternalRowIterator(readerMaps(schemaPairHashKey).apply(fileInfo))
+      new CloseableInternalRowIterator(baseFileReader.get.apply(fileInfo))
     }
-  }
-
-  private def generateSchemaPairHashKey(dataSchema: Schema, requestedSchema: Schema): Long = {
-    dataSchema.hashCode() + requestedSchema.hashCode()
   }
 
   /**
@@ -104,49 +98,5 @@ class SparkFileFormatInternalRowReaderContext(readerMaps: mutable.Map[Long, Part
       sparkAdapter.createAvroDeserializer(schema, structType)
     })
     deserializer.deserialize(avroRecord).get.asInstanceOf[InternalRow]
-  }
-
-  override def mergeBootstrapReaders(skeletonFileIterator: ClosableIterator[InternalRow],
-                                     dataFileIterator: ClosableIterator[InternalRow]): ClosableIterator[InternalRow] = {
-    doBootstrapMerge(skeletonFileIterator.asInstanceOf[ClosableIterator[Any]],
-      dataFileIterator.asInstanceOf[ClosableIterator[Any]])
-  }
-
-  protected def doBootstrapMerge(skeletonFileIterator: ClosableIterator[Any], dataFileIterator: ClosableIterator[Any]): ClosableIterator[InternalRow] = {
-    new ClosableIterator[Any] {
-      val combinedRow = new JoinedRow()
-
-      override def hasNext: Boolean = {
-        //If the iterators are out of sync it is probably due to filter pushdown
-        checkState(dataFileIterator.hasNext == skeletonFileIterator.hasNext,
-          "Bootstrap data-file iterator and skeleton-file iterator have to be in-sync!")
-        dataFileIterator.hasNext && skeletonFileIterator.hasNext
-      }
-
-      override def next(): Any = {
-        (skeletonFileIterator.next(), dataFileIterator.next()) match {
-          case (s: ColumnarBatch, d: ColumnarBatch) =>
-            val numCols = s.numCols() + d.numCols()
-            val vecs: Array[ColumnVector] = new Array[ColumnVector](numCols)
-            for (i <- 0 until numCols) {
-              if (i < s.numCols()) {
-                vecs(i) = s.column(i)
-              } else {
-                vecs(i) = d.column(i - s.numCols())
-              }
-            }
-            assert(s.numRows() == d.numRows())
-            sparkAdapter.makeColumnarBatch(vecs, s.numRows())
-          case (_: ColumnarBatch, _: InternalRow) => throw new IllegalStateException("InternalRow ColumnVector mismatch")
-          case (_: InternalRow, _: ColumnarBatch) => throw new IllegalStateException("InternalRow ColumnVector mismatch")
-          case (s: InternalRow, d: InternalRow) => combinedRow(s, d)
-        }
-      }
-
-      override def close(): Unit = {
-        skeletonFileIterator.close()
-        dataFileIterator.close()
-      }
-    }.asInstanceOf[ClosableIterator[InternalRow]]
   }
 }

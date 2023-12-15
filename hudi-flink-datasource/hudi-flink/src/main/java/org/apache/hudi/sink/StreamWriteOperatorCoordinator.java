@@ -301,7 +301,9 @@ public class StreamWriteOperatorCoordinator
 
   @Override
   public void subtaskFailed(int i, @Nullable Throwable throwable) {
-    // no operation
+    // reset the event
+    this.eventBuffer[i] = null;
+    LOG.warn("Reset the event for task [" + i + "]", throwable);
   }
 
   @Override
@@ -376,8 +378,7 @@ public class StreamWriteOperatorCoordinator
   }
 
   private void addEventToBuffer(WriteMetadataEvent event) {
-    if (this.eventBuffer[event.getTaskID()] != null
-        && this.eventBuffer[event.getTaskID()].getInstantTime().equals(event.getInstantTime())) {
+    if (this.eventBuffer[event.getTaskID()] != null) {
       this.eventBuffer[event.getTaskID()].mergeWith(event);
     } else {
       this.eventBuffer[event.getTaskID()] = event;
@@ -418,10 +419,6 @@ public class StreamWriteOperatorCoordinator
         writeClient.getHeartbeatClient().start(instant);
       }
       commitInstant(instant);
-    }
-    // stop the heartbeat for old instant
-    if (writeClient.getConfig().getFailedWritesCleanPolicy().isLazy() && !WriteMetadataEvent.BOOTSTRAP_INSTANT.equals(this.instant)) {
-      writeClient.getHeartbeatClient().stop(this.instant);
     }
     // starts a new instant
     startInstant();

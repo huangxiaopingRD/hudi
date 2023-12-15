@@ -32,7 +32,7 @@ import org.apache.hudi.common.engine.{EngineType, HoodieLocalEngineContext}
 import org.apache.hudi.common.fs.FSUtils
 import org.apache.hudi.common.fs.FSUtils.getRelativePartitionPath
 import org.apache.hudi.common.model.HoodieRecord.HoodieRecordType
-import org.apache.hudi.common.model.{HoodieSparkRecord, _}
+import org.apache.hudi.common.model._
 import org.apache.hudi.common.table.log.HoodieMergedLogRecordScanner
 import org.apache.hudi.common.util.{ConfigUtils, FileIOUtils, HoodieRecordUtils}
 import org.apache.hudi.config.HoodiePayloadConfig
@@ -108,29 +108,6 @@ class LogFileIterator(logFiles: List[HoodieLogFile],
       maxCompactionMemoryInBytes, config, internalSchema)
   }
 
-  private val (hasOperationField, operationFieldPos) = {
-    val operationField = logFileReaderAvroSchema.getField(HoodieRecord.OPERATION_METADATA_FIELD)
-    if (operationField != null) {
-      (true, operationField.pos())
-    } else {
-      (false, -1)
-    }
-  }
-
-  protected def isDeleteOperation(r: InternalRow): Boolean = if (hasOperationField) {
-    val operation = r.getString(operationFieldPos)
-    HoodieOperation.fromName(operation) == HoodieOperation.DELETE
-  } else {
-    false
-  }
-
-  protected def isDeleteOperation(r: GenericRecord): Boolean = if (hasOperationField) {
-    val operation = r.get(operationFieldPos).toString
-    HoodieOperation.fromName(operation) == HoodieOperation.DELETE
-  } else {
-    false
-  }
-
   def logRecordsPairIterator(): Iterator[(String, HoodieRecord[_])] = {
     logRecords.iterator
   }
@@ -157,22 +134,12 @@ class LogFileIterator(logFiles: List[HoodieLogFile],
     logRecordsIterator.hasNext && {
       logRecordsIterator.next() match {
         case Some(r: HoodieAvroIndexedRecord) =>
-          val data = r.getData.asInstanceOf[GenericRecord]
-          if (isDeleteOperation(data)) {
-            this.hasNextInternal
-          } else {
-            val projectedAvroRecord = requiredSchemaAvroProjection(data)
-            nextRecord = deserialize(projectedAvroRecord)
-            true
-          }
+          val projectedAvroRecord = requiredSchemaAvroProjection(r.getData.asInstanceOf[GenericRecord])
+          nextRecord = deserialize(projectedAvroRecord)
+          true
         case Some(r: HoodieSparkRecord) =>
-          val data = r.getData
-          if (isDeleteOperation(data)) {
-            this.hasNextInternal
-          } else {
-            nextRecord = requiredSchemaRowProjection(data)
-            true
-          }
+          nextRecord = requiredSchemaRowProjection(r.getData)
+          true
         case None => this.hasNextInternal
       }
     }
@@ -305,27 +272,18 @@ class RecordMergingFileIterator(logFiles: List[HoodieLogFile],
         val curRecord = new HoodieSparkRecord(curRow, readerSchema)
         val result = recordMerger.merge(curRecord, baseFileReaderAvroSchema, newRecord, logFileReaderAvroSchema, payloadProps)
         toScalaOption(result)
-          .flatMap { r =>
-            val data = r.getLeft.getData.asInstanceOf[InternalRow]
-            if (isDeleteOperation(data)) {
-              None
-            } else {
-              val schema = HoodieInternalRowUtils.getCachedSchema(r.getRight)
-              val projection = HoodieInternalRowUtils.getCachedUnsafeProjection(schema, structTypeSchema)
-              Some(projection.apply(data))
-            }
+          .map { r =>
+            val schema = HoodieInternalRowUtils.getCachedSchema(r.getRight)
+            val projection = HoodieInternalRowUtils.getCachedUnsafeProjection(schema, structTypeSchema)
+            projection.apply(r.getLeft.getData.asInstanceOf[InternalRow])
           }
       case _ =>
         val curRecord = new HoodieAvroIndexedRecord(serialize(curRow))
         val result = recordMerger.merge(curRecord, baseFileReaderAvroSchema, newRecord, logFileReaderAvroSchema, payloadProps)
         toScalaOption(result)
-          .flatMap { r =>
+          .map { r =>
             val avroRecord = r.getLeft.toIndexedRecord(r.getRight, payloadProps).get.getData.asInstanceOf[GenericRecord]
-            if (isDeleteOperation(avroRecord)) {
-              None
-            } else {
-              Some(deserialize(requiredSchemaAvroProjection(avroRecord)))
-            }
+            deserialize(requiredSchemaAvroProjection(avroRecord))
           }
     }
   }

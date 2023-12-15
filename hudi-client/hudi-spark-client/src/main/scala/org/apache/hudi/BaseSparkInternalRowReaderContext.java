@@ -37,15 +37,12 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.spark.sql.HoodieInternalRowUtils;
 import org.apache.spark.sql.HoodieUnsafeRowUtils;
 import org.apache.spark.sql.catalyst.InternalRow;
-import org.apache.spark.sql.catalyst.expressions.UnsafeProjection;
 import org.apache.spark.sql.types.StructType;
 
 import java.util.Map;
-import java.util.function.UnaryOperator;
 
 import static org.apache.hudi.common.model.HoodieRecord.RECORD_KEY_METADATA_FIELD;
 import static org.apache.hudi.common.model.HoodieRecordMerger.DEFAULT_MERGER_STRATEGY_UUID;
-import static org.apache.spark.sql.HoodieInternalRowUtils.getCachedSchema;
 
 /**
  * An abstract class implementing {@link HoodieReaderContext} to handle {@link InternalRow}s.
@@ -116,7 +113,7 @@ public abstract class BaseSparkInternalRowReaderContext extends HoodieReaderCont
   }
 
   private Object getFieldValueFromInternalRow(InternalRow row, Schema recordSchema, String fieldName) {
-    StructType structType = getCachedSchema(recordSchema);
+    StructType structType = HoodieInternalRowUtils.getCachedSchema(recordSchema);
     scala.Option<HoodieUnsafeRowUtils.NestedFieldPath> cachedNestedFieldPath =
         HoodieInternalRowUtils.getCachedPosList(structType, fieldName);
     if (cachedNestedFieldPath.isDefined()) {
@@ -125,11 +122,5 @@ public abstract class BaseSparkInternalRowReaderContext extends HoodieReaderCont
     } else {
       return null;
     }
-  }
-
-  @Override
-  public UnaryOperator<InternalRow> projectRecord(Schema from, Schema to) {
-    UnsafeProjection projection = HoodieInternalRowUtils.generateUnsafeProjectionAlias(getCachedSchema(from), getCachedSchema(to));
-    return projection::apply;
   }
 }

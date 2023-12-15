@@ -449,8 +449,7 @@ public class HoodieSparkRecord extends HoodieRecord<InternalRow> {
         data instanceof HoodieInternalRow
             || data instanceof GenericInternalRow
             || data instanceof SpecificInternalRow
-            || SparkAdapterSupport$.MODULE$.sparkAdapter().isColumnarBatchRow(data))
-            || data instanceof JoinedRow;
+            || SparkAdapterSupport$.MODULE$.sparkAdapter().isColumnarBatchRow(data));
 
     ValidationUtils.checkState(isValid);
   }

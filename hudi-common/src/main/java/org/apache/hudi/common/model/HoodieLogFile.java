@@ -19,7 +19,6 @@
 package org.apache.hudi.common.model;
 
 import org.apache.hudi.common.fs.FSUtils;
-import org.apache.hudi.common.table.cdc.HoodieCDCUtils;
 import org.apache.hudi.exception.InvalidHoodiePathException;
 import org.apache.hudi.hadoop.CachingPath;
 
@@ -146,10 +145,6 @@ public class HoodieLogFile implements Serializable {
       parseFieldsFromPath();
     }
     return fileExtension;
-  }
-
-  public boolean isCDC() {
-    return getSuffix().equals(HoodieCDCUtils.CDC_LOGFILE_SUFFIX);
   }
 
   public String getSuffix() {

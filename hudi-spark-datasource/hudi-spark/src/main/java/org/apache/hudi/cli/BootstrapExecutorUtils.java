@@ -185,15 +185,8 @@ public class BootstrapExecutorUtils implements Serializable {
       HashMap<String, String> checkpointCommitMetadata = new HashMap<>();
       checkpointCommitMetadata.put(CHECKPOINT_KEY, Config.checkpoint);
       bootstrapClient.bootstrap(Option.of(checkpointCommitMetadata));
-    } catch (Exception e) {
-      Path basePath = new Path(cfg.basePath);
-      if (fs.exists(basePath)) {
-        LOG.warn("deleted target base path " + cfg.basePath);
-        fs.delete(basePath, true);
-      }
-      throw new HoodieException("Failed to bootstrap table", e);
+      syncHive();
     }
-    syncHive();
   }
 
   /**

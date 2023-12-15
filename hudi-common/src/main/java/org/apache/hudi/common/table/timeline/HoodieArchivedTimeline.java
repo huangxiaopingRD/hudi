@@ -182,7 +182,7 @@ public class HoodieArchivedTimeline extends HoodieDefaultTimeline {
   }
 
   private List<HoodieInstant> loadInstants() {
-    return loadInstants(null, LoadMode.ACTION);
+    return loadInstants(null, LoadMode.SLIM);
   }
 
   private List<HoodieInstant> loadInstants(String startTs, String endTs) {
@@ -275,19 +275,15 @@ public class HoodieArchivedTimeline extends HoodieDefaultTimeline {
    */
   public enum LoadMode {
     /**
-     * Loads the instantTime, completionTime.
-     */
-    TIME,
-    /**
      * Loads the instantTime, completionTime, action.
      */
-    ACTION,
+    SLIM,
     /**
      * Loads the instantTime, completionTime, action, metadata.
      */
     METADATA,
     /**
-     * Loads the instantTime, completionTime, action, plan.
+     * Loads the instantTime, completionTime, plan.
      */
     PLAN
   }

@@ -34,6 +34,7 @@ import org.apache.hudi.common.table.view.FileSystemViewManager;
 import org.apache.hudi.common.table.view.FileSystemViewStorageConfig;
 import org.apache.hudi.common.table.view.SyncableFileSystemView;
 import org.apache.hudi.common.testutils.HoodieTestDataGenerator;
+import org.apache.hudi.common.util.Option;
 import org.apache.hudi.keygen.constant.KeyGeneratorOptions;
 import org.apache.hudi.metadata.HoodieTableMetadata;
 
@@ -44,6 +45,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -67,7 +69,7 @@ public abstract class TestHoodieFileGroupReaderBase<T> {
 
   public abstract String getBasePath();
 
-  public abstract HoodieReaderContext<T> getHoodieReaderContext(String tablePath, Schema avroSchema);
+  public abstract HoodieReaderContext<T> getHoodieReaderContext(String tablePath, String[] partitionPath);
 
   public abstract void commitToTable(List<String> recordList, String operation,
                                      Map<String, String> writeConfigs);
@@ -156,6 +158,7 @@ public abstract class TestHoodieFileGroupReaderBase<T> {
     SyncableFileSystemView fsView = viewManager.getFileSystemView(metaClient);
     FileSlice fileSlice = fsView.getAllFileSlices(partitionPaths[0]).findFirst().get();
     List<String> logFilePathList = getLogFileListFromFileSlice(fileSlice);
+    Collections.sort(logFilePathList);
     assertEquals(expectedLogFileNum, logFilePathList.size());
 
     List<T> actualRecordList = new ArrayList<>();
@@ -166,17 +169,17 @@ public abstract class TestHoodieFileGroupReaderBase<T> {
     if (metaClient.getTableConfig().contains(PARTITION_FIELDS)) {
       props.setProperty(PARTITION_FIELDS.key(), metaClient.getTableConfig().getString(PARTITION_FIELDS));
     }
+    String[] partitionValues = partitionPaths[0].isEmpty() ? new String[] {} : new String[] {partitionPaths[0]};
     assertEquals(containsBaseFile, fileSlice.getBaseFile().isPresent());
     HoodieFileGroupReader<T> fileGroupReader = new HoodieFileGroupReader<>(
-        getHoodieReaderContext(tablePath, avroSchema),
+        getHoodieReaderContext(tablePath, partitionValues),
         hadoopConf,
         tablePath,
         metaClient.getActiveTimeline().lastInstant().get().getTimestamp(),
-        fileSlice,
-        avroSchema,
+        fileSlice.getBaseFile(),
+        logFilePathList.isEmpty() ? Option.empty() : Option.of(logFilePathList),
         avroSchema,
         props,
-        metaClient.getTableConfig(),
         0,
         fileSlice.getTotalFileSize(),
         false);
